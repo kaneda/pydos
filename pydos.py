@@ -76,8 +76,10 @@ class HttpDos(threading.Thread):
                     self.code_map[e.code] += 1
                 else:
                     self.code_map[e.code] = 1
+
+                self.num_errors += 1
             except Exception, e:
-                if "unknown" in self.code_map:
+                if str(e) in self.code_map:
                     self.code_map[str(e)] += 1
                 else:
                     self.code_map[str(e)] = 1
