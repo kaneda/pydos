@@ -116,7 +116,7 @@ def usage():
     print "python pydos.py -u https://yourdomain.com/somepath --time-to-run=600               # Run against your domain for 600 seconds"
     print "python pydos.py -u https://yourdomain.com/somepath --method=POST                   # Run POST calls"
     print "python pydos.py -u https://yourdomain.com/somepath --verbose                       # Enable verbose mode"
-    print "python pydos.py -u https://yourdomain.com/somepath?somearg=somevalue --method=POST # Run POST called against endpoint with payload somearg=somevalue
+    print "python pydos.py -u https://yourdomain.com/somepath?somearg=somevalue --method=POST # Run POST called against endpoint with payload somearg=somevalue"
 
 def get_payload(url, method = 'GET'):
     payload = None
