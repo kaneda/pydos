@@ -1,6 +1,6 @@
 '''
 Author: kaneda (kanedasan@gmail.com)
-Date: August 12th 2015
+Date: December 11th 2015
 Description: Py DoS
 Requires: pycurl
 
@@ -38,13 +38,16 @@ import socket
 import sys
 import threading
 import time
+import urllib
 import urllib2
 
 class HttpDos(threading.Thread):
-    def __init__(self, url, method = 'GET', http_timeout = 0.5, time_limit = 600, verbose = False):
+    def __init__(self, url, method = 'GET', http_timeout = 0.5, time_limit = 600, payload = None, verbose = False):
         super(HttpDos, self).__init__()
+
         self.url          = url
         self.method       = method
+        self.payload      = payload
         self.http_timeout = http_timeout
         self.time_limit   = time_limit
         self.verbose      = verbose
@@ -60,6 +63,8 @@ class HttpDos(threading.Thread):
                 handler = urllib2.HTTPHandler()
                 opener  = urllib2.build_opener(handler)
                 request = urllib2.Request(self.url)
+                if self.payload:
+                    request.add_data(urllib.urlencode(self.payload))
                 request.get_method = lambda: self.method
                 a = urllib2.urlopen(request, timeout = self.http_timeout)
                 response_code = a.getcode()
@@ -101,16 +106,32 @@ def usage():
     print "pydos.py help\n"
     print "Options:\n"
     print "--help: print this help"
-    print "-u, --url: url to DoS"
+    print "-u, --url: url to DoS (with parameters, if desired)"
     print "--timeout-http: Timeout for HTTP(S) socket connections; default is 0.5 seconds (500ms); minimum is 0.1 seconds"
     print "--time-to-run: Time in total to run (default is 600 seconds)"
     print "--num-threads: Number of threads to use (default is 1 thread)"
     print "--method: Method to use (either 'POST' or 'GET')"
     print "--verbose: Turn on verbose information about things happening in each thread (default is off)"
     print "Examples:\n"
-    print "python pydos.py -u https://yourdomain.com/somepath --time-to-run=600 # Run against your domain for 600 seconds"
-    print "python pydos.py -u https://yourdomain.com/somepath --method=POST     # Run POST calls"
-    print "python pydos.py -u https://yourdomain.com/somepath --verbose         # Enable verbose mode"
+    print "python pydos.py -u https://yourdomain.com/somepath --time-to-run=600               # Run against your domain for 600 seconds"
+    print "python pydos.py -u https://yourdomain.com/somepath --method=POST                   # Run POST calls"
+    print "python pydos.py -u https://yourdomain.com/somepath --verbose                       # Enable verbose mode"
+    print "python pydos.py -u https://yourdomain.com/somepath?somearg=somevalue --method=POST # Run POST called against endpoint with payload somearg=somevalue
+
+def get_payload(url, method = 'GET'):
+    payload = None
+    if method == 'POST':
+        c_url, args = url.split('?')
+
+        if args:
+            payload = {}
+            params = args.split('&')
+
+            for param in params:
+                key, value = param.split('=')
+                payload[key] = value
+
+    return payload
 
 def main():
     try:
@@ -173,8 +194,11 @@ def main():
             usage()
             sys.exit()
 
+    payload = get_payload(url, http_method)
+
     print "URL: {0}".format(url)
     print "Method: {0}".format(http_method)
+    print "Payload: {0}".format(payload)
     print "HTTP Timeout: {0}".format(http_timeout)
     print "Time limit: {0}".format(time_to_run)
     print "Num threads: {0}".format(num_threads)
@@ -186,7 +210,7 @@ def main():
     total_requests = 0
 
     for i in range(num_threads):
-        http_job_list.append(HttpDos(url, http_method, http_timeout, time_to_run, verbose))
+        http_job_list.append(HttpDos(url, http_method, http_timeout, time_to_run, payload, verbose))
 
     for j in http_job_list:
         j.start()
@@ -209,3 +233,4 @@ def main():
     print "Total errors received:\n{0}".format(total_errors)
 
 main()
+
