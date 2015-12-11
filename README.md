@@ -21,7 +21,12 @@ On my VPS I was able to sustain 38-39 requests per second using PyDoS.
 # Examples:
 
 ```bash
-python pydos.py -u https://yourdomain.com/somepath --time-to-run=600 # Run against your domain for 600 seconds
-python pydos.py -u https://yourdomain.com/somepath --method=POST     # Run POST calls
-python pydos.py -u https://yourdomain.com/somepath --verbose         # Enable verbose mode
+python pydos.py -u https://yourdomain.com/somepath --time-to-run=600               # Run against your domain for 600 seconds
+python pydos.py -u https://yourdomain.com/somepath --method=POST                   # Run POST calls
+python pydos.py -u https://yourdomain.com/somepath --verbose                       # Enable verbose mode
+python pydos.py -u https://yourdomain.com/somepath?somearg=somevalue --method=POST # Run POST called against endpoint with payload somearg=somevalue
 ```
+
+# Recent Changes
+
+* Added support for GET or POST payloads (simply append the parameters to the URL as though it were a GET request)
