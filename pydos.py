@@ -1,10 +1,10 @@
 '''
 Author: kaneda (kanedasan@gmail.com)
-Date: December 11th 2015
+Date: February 9th 2016
 Description: Py DoS
 Requires: pycurl
 
-Copyright (c) 2015 kaneda (http://jbegleiter.com)
+Copyright (c) 2016 kaneda (http://jbegleiter.com)
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -30,7 +30,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 Don't be evil.
 '''
 
-import cStringIO
+import io
 import getopt
 import pycurl
 from random import random
@@ -38,12 +38,18 @@ import socket
 import sys
 import threading
 import time
-import urllib
-import urllib2
+import urllib.error
+import urllib.parse
+import urllib.request
 
 class HttpDos(threading.Thread):
     def __init__(self, url, method = 'GET', http_timeout = 0.5, time_limit = 600, payload = None, verbose = False):
         super(HttpDos, self).__init__()
+
+        # We don't want to transmit potentially sensitive
+        # information in the URL of the POST request
+        if method == 'POST':
+            url = url.split('?')[0]
 
         self.url          = url
         self.method       = method
@@ -60,13 +66,19 @@ class HttpDos(threading.Thread):
         current_time = time.time()
         while current_time - start_time < self.time_limit:
             try:
-                handler = urllib2.HTTPHandler()
-                opener  = urllib2.build_opener(handler)
-                request = urllib2.Request(self.url)
+                handler = urllib.request.HTTPHandler()
+                opener  = urllib.request.build_opener(handler)
+                urllib.request.install_opener(opener)
+                request = None
                 if self.payload:
-                    request.add_data(urllib.urlencode(self.payload))
+                    encoded_payload = urllib.parse.urlencode(self.payload)
+                    encoded_payload = encoded_payload.encode('UTF-8')
+                    request = urllib.request.Request(self.url, encoded_payload)
+                else:
+                    request = urllib.request.Request(self.url)
+
                 request.get_method = lambda: self.method
-                a = urllib2.urlopen(request, timeout = self.http_timeout)
+                a = urllib.request.urlopen(request, timeout = self.http_timeout)
                 response_code = a.getcode()
 
                 if response_code != 200:
@@ -76,14 +88,14 @@ class HttpDos(threading.Thread):
                         self.code_map[response_code] = 1
 
                     self.num_errors += 1
-            except urllib2.HTTPError, e:
+            except urllib.error.HTTPError as e:
                 if e.code in self.code_map:
                     self.code_map[e.code] += 1
                 else:
                     self.code_map[e.code] = 1
 
                 self.num_errors += 1
-            except Exception, e:
+            except Exception as e:
                 if str(e) in self.code_map:
                     self.code_map[str(e)] += 1
                 else:
@@ -96,27 +108,27 @@ class HttpDos(threading.Thread):
                 current_time = time.time()
 
                 if self.verbose and self.num_requests % 1000 == 0:
-                    print "Sent {0} requests on thread {1} in {2} seconds".format(self.num_requests, self.ident, current_time - start_time)
+                    print("Sent {0} requests on thread {1} in {2} seconds".format(self.num_requests, self.ident, current_time - start_time))
 
     def run(self):
-        print "Starting run on thread {0}".format(self.ident)
+        print("Starting run on thread {0}".format(self.ident))
         self.testHttpTimeout()
 
 def usage():
-    print "pydos.py help\n"
-    print "Options:\n"
-    print "--help: print this help"
-    print "-u, --url: url to DoS (with parameters, if desired)"
-    print "--timeout-http: Timeout for HTTP(S) socket connections; default is 0.5 seconds (500ms); minimum is 0.1 seconds"
-    print "--time-to-run: Time in total to run (default is 600 seconds)"
-    print "--num-threads: Number of threads to use (default is 1 thread)"
-    print "--method: Method to use (either 'POST' or 'GET')"
-    print "--verbose: Turn on verbose information about things happening in each thread (default is off)"
-    print "Examples:\n"
-    print "python pydos.py -u https://yourdomain.com/somepath --time-to-run=600               # Run against your domain for 600 seconds"
-    print "python pydos.py -u https://yourdomain.com/somepath --method=POST                   # Run POST calls"
-    print "python pydos.py -u https://yourdomain.com/somepath --verbose                       # Enable verbose mode"
-    print "python pydos.py -u https://yourdomain.com/somepath?somearg=somevalue --method=POST # Run POST called against endpoint with payload somearg=somevalue"
+    print("pydos.py help\n")
+    print("Options:\n")
+    print("--help: print this help")
+    print("-u, --url: url to DoS (with parameters, if desired)")
+    print("--timeout-http: Timeout for HTTP(S) socket connections; default is 0.5 seconds (500ms); minimum is 0.1 seconds")
+    print("--time-to-run: Time in total to run (default is 600 seconds)")
+    print("--num-threads: Number of threads to use (default is 1 thread)")
+    print("--method: Method to use (either 'POST' or 'GET')")
+    print("--verbose: Turn on verbose information about things happening in each thread (default is off)")
+    print("Examples:\n")
+    print("python pydos.py -u https://yourdomain.com/somepath --time-to-run=600               # Run against your domain for 600 seconds")
+    print("python pydos.py -u https://yourdomain.com/somepath --method=POST                   # Run POST calls")
+    print("python pydos.py -u https://yourdomain.com/somepath --verbose                       # Enable verbose mode")
+    print("python pydos.py -u https://yourdomain.com/somepath?somearg=somevalue --method=POST # Run POST called against endpoint with payload somearg=somevalue")
 
 def get_payload(url, method = 'GET'):
     payload = None
@@ -128,8 +140,13 @@ def get_payload(url, method = 'GET'):
             params = args.split('&')
 
             for param in params:
-                key, value = param.split('=')
-                payload[key] = value
+                key, *value = param.split('=')
+                if len(value) > 1:
+                    value = '='.join(value)
+                else:
+                    value = ''.join(value)
+
+                payload[key] = ''.join(value)
 
     return payload
 
@@ -142,7 +159,7 @@ def main():
         )
     except getopt.GetoptError as err:
         # print help information and exit:
-        print str(err)
+        print(str(err))
         usage()
         sys.exit(2)
 
@@ -166,7 +183,7 @@ def main():
                 if(num_threads < 1): raise Exception('yikes')
             except Exception:
                 num_threads = 1
-                print "Not a valid number of threads (must be at least 1), using 1 instead"
+                print("Not a valid number of threads (must be at least 1), using 1 instead")
         elif option in ("-p", "--timeout-http"):
             try:
                 http_timeout = float(argument)
@@ -174,10 +191,10 @@ def main():
                 if http_timeout < 0.1: raise Exception('yikes')
             except Exception:
                 http_timeout = 0.5
-                print "Not a valid http timeout (must be at least 0.1), using 0.5 instead"
+                print("Not a valid http timeout (must be at least 0.1), using 0.5 instead")
         elif option in ("-m", "--method"):
             if argument.upper() not in ['GET', 'POST']:
-                print "Not a valid method, must be one of 'GET' or 'POST'; using 'GET'"
+                print("Not a valid method, must be one of 'GET' or 'POST'; using 'GET'")
             else:
                 http_method = argument.upper()
         elif option in ("-v", "--verbose"):
@@ -189,20 +206,20 @@ def main():
                 if(time_to_run < 1): raise Exception('yikes')
             except Exception:
                 time_to_run = 600
-                print "Not a valid number of seconds to run for (must be at least 1), using 600 instead"
+                print("Not a valid number of seconds to run for (must be at least 1), using 600 instead")
         else:
             usage()
             sys.exit()
 
     payload = get_payload(url, http_method)
 
-    print "URL: {0}".format(url)
-    print "Method: {0}".format(http_method)
-    print "Payload: {0}".format(payload)
-    print "HTTP Timeout: {0}".format(http_timeout)
-    print "Time limit: {0}".format(time_to_run)
-    print "Num threads: {0}".format(num_threads)
-    print "Verbose mode: {0}".format("on" if verbose else "off")
+    print("URL: {0}".format(url))
+    print("Method: {0}".format(http_method))
+    print("Payload: {0}".format(payload))
+    print("HTTP Timeout: {0}".format(http_timeout))
+    print("Time limit: {0}".format(time_to_run))
+    print("Num threads: {0}".format(num_threads))
+    print("Verbose mode: {0}".format("on" if verbose else "off"))
 
     http_job_list  = []
     error_map      = {}
@@ -227,10 +244,10 @@ def main():
         total_requests += j.num_requests
         total_errors   += j.num_errors
 
-    print "All done!"
-    print "Total requests sent: {0}".format(total_requests)
-    print "Error map received:\n{0}".format(error_map)
-    print "Total errors received:\n{0}".format(total_errors)
+    print("All done!")
+    print("Total requests sent: {0}".format(total_requests))
+    print("Error map received:\n{0}".format(error_map))
+    print("Total errors received:\n{0}".format(total_errors))
 
 main()
 
