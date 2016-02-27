@@ -4,7 +4,9 @@ This was written as a simple test for hammering a URL using GET or POST. The thr
 
 # Benchmarks
 
-On my VPS I was able to sustain 38-39 requests per second using PyDoS.
+Using a c4.2xlarge (8 vCPU, 15GB vRAM) instance in Amazon and 20 threads you can use this tool to generate 20K-30K RPM (or 330-500 requests per second).
+
+On my VPS (1 vCPU, 2GB vRAM) I was able to generate 2.2K-2.5K RPM (or 38-39 requests per second) using PyDoS.
 
 # Options
 
@@ -29,4 +31,8 @@ python pydos.py -u https://yourdomain.com/somepath?somearg=somevalue --method=PO
 
 # Recent Changes
 
+* Transitioned the project to Python3, cleaning up a lot of the code in the process
+* Fixed payload support for values that contain the "=" sign
+* Fixed payload in URL for POST requests to protect integrity of request
+* Benchmarked using larger machine against production service(s)
 * Added support for GET or POST payloads (simply append the parameters to the URL as though it were a GET request)
